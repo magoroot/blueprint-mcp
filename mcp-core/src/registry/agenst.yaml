@@ -1,0 +1,19 @@
+agents:
+  - name: drawio
+    description: Geração de diagramas arquiteturais (draw.io)
+    endpoint: http://blueprint-mcp-drawio:3000
+    capabilities:
+      - diagrams
+      - architecture-visual
+    read_only: true
+    timeout_ms: 15000
+
+  - name: aws
+    description: Especialista em arquitetura AWS
+    endpoint: http://blueprint-mcp-aws:3000
+    capabilities:
+      - aws-architecture
+      - aws-services
+      - best-practices
+    read_only: true
+    timeout_ms: 15000
