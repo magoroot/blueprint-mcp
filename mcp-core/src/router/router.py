@@ -1,5 +1,5 @@
 import requests
-from src.registry.loader import load_agents
+from registry.loader import load_agents
 
 agents = load_agents()
 

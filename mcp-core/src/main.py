@@ -1,5 +1,5 @@
 from fastapi import FastAPI
-from src.router.router import route
+from router.router import route
 
 app = FastAPI(title="Blueprint MCP Core")
 
