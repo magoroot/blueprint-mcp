@@ -29,7 +29,7 @@ MAX_ROWS = int(os.getenv("CRONOGRAMA_MAX_ROWS", "300"))
 
 os.makedirs(DEFAULT_OUTPUT_DIR, exist_ok=True)
 
-mcp = FastMCP("Cronograma-Builder", json_response=True)
+mcp = FastMCP("Cronograma-MCP", json_response=True)
 
 
 # -----------------------------
