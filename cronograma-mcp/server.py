@@ -300,6 +300,12 @@ def gerar_cronograma_xlsx(
         with open(output_path, "rb") as f:
             result["base64"] = base64.b64encode(f.read()).decode("utf-8")
 
+        result["content_type"] = (
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+        result["download_name"] = os.path.basename(output_path)
+
+
     logger.info(
         f"[{request_id}] geracao_concluida arquivo='{base_name}' size_bytes={file_size} elapsed_ms={elapsed_ms}"
     )
