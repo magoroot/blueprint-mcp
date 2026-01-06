@@ -1,0 +1,158 @@
+{
+  "project": {
+    "name": "Projeto Lift-and-Shift Rehost - Grupo Zelo",
+    "code": "Zelo-Fase1",
+    "owner": "3DB",
+    "timezone": "America/Sao_Paulo"
+  },
+  "settings": {
+    "format_version": "1.0.0",
+    "duration_format": "HOURS_OVER_24",
+    "max_rows": 500,
+    "sheet_name": "Planilha1",
+    "include_project_row": true
+  },
+  "macros": [
+    {
+      "name": "Pre-Projeto",
+      "responsible": "3DB+Cliente",
+      "micros": [
+        {
+          "name": "Levantamento de Requisitos, Confecção de Blueprint, Sizing e Cronograma (FASE ATUAL)",
+          "hours": 8,
+          "responsible": "3DB+Cliente"
+        }
+      ]
+    },
+    {
+      "name": "Atividades preliminares",
+      "responsible": "3DB",
+      "micros": [
+        {
+          "name": "Alinhamento (Comercial, Técnico)",
+          "hours": 0.1667,
+          "responsible": "3DB/PRJ"
+        },
+        {
+          "name": "Redesenhar a Blueprint conforme arquitetura de implantação",
+          "hours": 4,
+          "responsible": "3DB/AIM"
+        },
+        {
+          "name": "Definição de Arquitetura de Rede",
+          "hours": 2,
+          "responsible": "3DB/AIM"
+        },
+        {
+          "name": "Definição de Arquitetura de Segurança",
+          "hours": 2,
+          "responsible": "3DB/AIM"
+        }
+      ]
+    },
+    {
+      "name": "Preparação do Ambiente Cloud",
+      "responsible": "3DB",
+      "micros": [
+        {
+          "name": "Criação de contas e configuração inicial",
+          "hours": 4,
+          "responsible": "3DB/CloudOps"
+        },
+        {
+          "name": "Configuração de VPC e Redes",
+          "hours": 8,
+          "responsible": "3DB/CloudOps"
+        },
+        {
+          "name": "Configuração de Segurança (IAM, Security Groups)",
+          "hours": 6,
+          "responsible": "3DB/CloudOps"
+        },
+        {
+          "name": "Setup de Monitoramento e Logs",
+          "hours": 4,
+          "responsible": "3DB/CloudOps"
+        }
+      ]
+    },
+    {
+      "name": "Migração de Servidores",
+      "responsible": "3DB",
+      "micros": [
+        {
+          "name": "Instalação e configuração de ferramentas de migração",
+          "hours": 8,
+          "responsible": "3DB/Migration"
+        },
+        {
+          "name": "Replicação de dados (por servidor - estimativa 10 servidores)",
+          "hours": 80,
+          "responsible": "3DB/Migration"
+        },
+        {
+          "name": "Testes de conectividade e validação",
+          "hours": 16,
+          "responsible": "3DB/Migration"
+        },
+        {
+          "name": "Cutover e switchover",
+          "hours": 24,
+          "responsible": "3DB/Migration"
+        }
+      ]
+    },
+    {
+      "name": "Testes e Validação",
+      "responsible": "3DB+Cliente",
+      "micros": [
+        {
+          "name": "Testes funcionais",
+          "hours": 40,
+          "responsible": "Cliente"
+        },
+        {
+          "name": "Testes de performance",
+          "hours": 16,
+          "responsible": "3DB/QA"
+        },
+        {
+          "name": "Testes de segurança",
+          "hours": 8,
+          "responsible": "3DB/Security"
+        },
+        {
+          "name": "Ajustes e correções",
+          "hours": 16,
+          "responsible": "3DB"
+        }
+      ]
+    },
+    {
+      "name": "Documentação e Treinamento",
+      "responsible": "3DB",
+      "micros": [
+        {
+          "name": "Documentação técnica (As-Built)",
+          "hours": 16,
+          "responsible": "3DB/AIM"
+        },
+        {
+          "name": "Documentação operacional",
+          "hours": 8,
+          "responsible": "3DB/CloudOps"
+        },
+        {
+          "name": "Treinamento da equipe do cliente",
+          "hours": 16,
+          "responsible": "3DB/Training"
+        },
+        {
+          "name": "Transferência de conhecimento",
+          "hours": 8,
+          "responsible": "3DB"
+        }
+      ]
+    }
+  ]
+}

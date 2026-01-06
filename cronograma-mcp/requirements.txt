@@ -1,0 +1,14 @@
+# Cronograma MCP - Dependências
+
+# FastMCP para servidor MCP
+mcp>=1.0.0
+
+# FastAPI e Uvicorn para servidor HTTP
+fastapi>=0.115.0
+uvicorn[standard]>=0.32.0
+
+# OpenPyXL para geração de XLSX
+openpyxl>=3.1.5
+
+# Utilitários
+python-multipart>=0.0.9

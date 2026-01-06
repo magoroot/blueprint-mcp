@@ -1,30 +1,41 @@
-FROM python:3.12-slim
+FROM python:3.11-slim
 
+# Metadados
+LABEL maintainer="Cronograma MCP Team"
+LABEL description="Servidor MCP para geração de cronogramas em XLSX"
+
+# Definir diretório de trabalho
 WORKDIR /app
 
-# Dependências básicas do sistema (mínimas e clássicas)
+# Instalar dependências do sistema (se necessário)
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    ca-certificates \
- && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/*
 
-# Copia o projeto
-COPY . .
+# Copiar requirements e instalar dependências Python
+COPY requirements.txt .
+RUN pip3 install --no-cache-dir --upgrade pip && \
+    pip3 install --no-cache-dir -r requirements.txt
 
-# Instala:
-# - uv: para instalar deps via pyproject/uv.lock e executar "uv run"
-# - mcpo: para expor seu MCP (stdio) como HTTP/OpenAPI (pra Open WebUI)
-RUN pip install --no-cache-dir uv mcpo
+# Copiar código fonte
+COPY main.py .
 
-# Instala dependências do projeto (se existir pyproject.toml/uv.lock)
-# - se tiver uv.lock, ele usa e fica reprodutível
-RUN if [ -f "pyproject.toml" ]; then uv sync; fi
+# Criar diretório de saída
+RUN mkdir -p /app/outputs
 
-# O seu MCP escreve no diretório DEFAULT_OUTPUT_DIR, que vem de CRONOGRAMA_OUTPUT_DIR
-# (no server.py o default é ./outputs) :contentReference[oaicite:4]{index=4}
+# Variáveis de ambiente padrão
 ENV CRONOGRAMA_OUTPUT_DIR=/app/outputs
+ENV CRONOGRAMA_MAX_ROWS=500
+ENV CRONOGRAMA_TTL_MINUTES=30
+ENV CRONOGRAMA_BASE_URL=http://localhost:8000
+ENV CRONOGRAMA_HTTP_PORT=8000
+ENV LOG_LEVEL=INFO
 
-# Porta do mcpo (proxy HTTP)
+# Expor porta HTTP
 EXPOSE 8000
 
-# mcpo sobe HTTP/OpenAPI e, após o "--", a gente inicia o MCP via uv
-CMD ["sh", "-lc", "mcpo --host 0.0.0.0 --port 8000 -- uv run server.py"]
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+  CMD python3 -c "import requests; requests.get('http://localhost:8000/health')" || exit 1
+
+# Executar servidor
+CMD ["python3", "main.py"]
