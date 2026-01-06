@@ -19,7 +19,8 @@ services:
 
       # IMPORTANTÍSSIMO: essa URL precisa ser acessível pelo navegador do usuário (OpenWebUI)
       # Ajuste para o IP/DNS do seu servidor docker
-      CRONOGRAMA_BASE_URL: "http://SEU_IP_OU_DOMINIO:9290"
+      CRONOGRAMA_BASE_URL: "http://172.16.30.56:9290"
+      CRONOGRAMA_RUN_MODE: "http"
 
       # Porta HTTP interna do app
       CRONOGRAMA_HTTP_PORT: "8000"
