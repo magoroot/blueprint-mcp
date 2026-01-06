@@ -10,6 +10,7 @@ Servidor de Cronograma (produção)
 import os
 import sys
 import re
+import unicodedata
 import logging
 import base64
 import secrets
@@ -106,9 +107,39 @@ class PayloadModel(BaseModel):
 # ========================================================
 
 def sanitize_filename(name: str) -> str:
-    sanitized = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "", name)
-    sanitized = re.sub(r"\s+", " ", sanitized).strip()
-    return sanitized[:200] if sanitized else "Cronograma"
+    """Gera nome de arquivo seguro (ASCII) e previsível.
+
+    - Normaliza Unicode (remove acentos)
+    - Remove caracteres inválidos / controles
+    - Troca espaços por underscore
+    - Remove tudo que não for [A-Za-z0-9._-]
+    - Limita tamanho para evitar nomes gigantes
+    """
+    if not name:
+        return "Cronograma"
+
+    # Normaliza e remove acentos (vira ASCII)
+    n = unicodedata.normalize("NFKD", str(name))
+    n = n.encode("ascii", "ignore").decode("ascii")
+
+    # Troca separadores comuns por espaço (antes de virar underscore)
+    n = n.replace("->", " ").replace("=>", " ").replace("/", " ")
+    n = n.replace("-", " ").replace("—", " ").replace("–", " ")
+
+    # Remove caracteres inválidos do Windows/headers e controles
+    n = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "", n)
+
+    # Espaços -> underscore e limpa
+    n = re.sub(r"\s+", "_", n).strip("_")
+
+    # Mantém somente caracteres seguros
+    n = re.sub(r"[^A-Za-z0-9._-]", "", n)
+
+    # Evita múltiplos underscores
+    n = re.sub(r"_+", "_", n)
+
+    return n[:180] if n else "Cronograma"
+
 
 def hours_to_duration_display(hours: float) -> str:
     """
@@ -308,7 +339,7 @@ def generate_xlsx(payload: dict) -> Tuple[Path, dict, float]:
 
     project_name_clean = sanitize_filename(project["name"])
     timestamp = datetime.now().strftime("%Y-%m-%d")
-    filename = f"Cronograma - {project_name_clean} - {timestamp}.xlsx"
+    filename = f"Cronograma_-_{project_name_clean}_-_{timestamp}.xlsx"
     filepath = OUTPUT_DIR / filename
 
     wb.save(filepath)
