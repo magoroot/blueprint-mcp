@@ -19,16 +19,20 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict, Any, Optional, Tuple, List
 
-from fastapi import FastAPI, HTTPException, Body
+from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse, JSONResponse
 import uvicorn
 
-# MCP (mantido para reuso de lógica e compatibilidade futura)
+# MCP (opcional)
 from mcp.server.fastmcp import FastMCP
 
 # XLSX
 from openpyxl import Workbook
 from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
+
+# Pydantic (essencial pro OpenAPI "travar" requestBody)
+from pydantic import BaseModel, Field, ConfigDict
+from typing_extensions import Annotated
 
 
 # ========================================================
@@ -49,9 +53,7 @@ TTL_MINUTES = int(os.getenv("CRONOGRAMA_TTL_MINUTES", "30"))
 BASE_URL = os.getenv("CRONOGRAMA_BASE_URL", "http://localhost:8000").rstrip("/")
 HTTP_PORT = int(os.getenv("CRONOGRAMA_HTTP_PORT", "8000"))
 
-# Modo de execução:
-# - http  (padrão para Docker/produção)
-# - stdio (apenas quando um cliente MCP spawnar o processo)
+# http (padrão) | stdio (apenas quando cliente MCP spawnar)
 RUN_MODE = os.getenv("CRONOGRAMA_RUN_MODE", "http").strip().lower()
 
 # Cleanup periódico (segundos)
@@ -62,6 +64,41 @@ OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 # Registry: token -> {filepath, filename, expires_at}
 file_registry: Dict[str, Dict[str, Any]] = {}
 registry_lock = threading.Lock()
+
+
+# ========================================================
+# Pydantic Models (OpenAPI rígido)
+# ========================================================
+
+class ProjectModel(BaseModel):
+    model_config = ConfigDict(extra="allow")
+    name: str = Field(..., min_length=1, description="Nome do projeto")
+    owner: Optional[str] = Field(default=None, description="Responsável/owner do projeto")
+
+class MicroModel(BaseModel):
+    model_config = ConfigDict(extra="allow")
+    name: str = Field(..., min_length=1, description="Nome da micro atividade")
+    hours: float = Field(..., gt=0, description="Horas da micro atividade (deve ser > 0)")
+    responsible: Optional[str] = Field(default=None, description="Responsável pela micro")
+
+class MacroModel(BaseModel):
+    model_config = ConfigDict(extra="allow")
+    name: str = Field(..., min_length=1, description="Nome da macro atividade")
+    responsible: Optional[str] = Field(default=None, description="Responsável pela macro")
+    micros: List[MicroModel] = Field(..., min_length=1, description="Lista de micros (obrigatório, >= 1)")
+
+class SettingsModel(BaseModel):
+    model_config = ConfigDict(extra="allow")
+    format_version: Optional[str] = Field(default="1.0.0")
+    sheet_name: Optional[str] = Field(default="Planilha1")
+    include_project_row: Optional[bool] = Field(default=True)
+    max_rows: Optional[int] = Field(default=None, ge=1, description="Override do limite de linhas")
+
+class PayloadModel(BaseModel):
+    model_config = ConfigDict(extra="allow")
+    project: ProjectModel
+    macros: List[MacroModel] = Field(..., min_length=1)
+    settings: Optional[SettingsModel] = Field(default=None)
 
 
 # ========================================================
@@ -113,91 +150,39 @@ def cleanup_expired_files() -> None:
 
 
 # ========================================================
-# VALIDATION
+# VALIDATION (regras adicionais além do Pydantic)
 # ========================================================
 
-def validate_payload(payload: dict) -> Tuple[bool, Optional[dict]]:
+def validate_payload_dict(payload: dict) -> Tuple[bool, Optional[dict]]:
+    """
+    Mantém validações "de negócio" extras + MAX_ROWS.
+    Observação: Pydantic já garante required + tipos + min_length + hours>0.
+    """
     errors = []
 
-    if not isinstance(payload, dict):
-        return False, {
-            "ok": False,
-            "error_code": "VALIDATION_ERROR",
-            "message": "Payload deve ser um objeto JSON",
-            "details": [{"field": "payload", "issue": "tipo inválido"}],
-        }
-
-    # project
-    project = payload.get("project")
-    if not project:
-        errors.append({"field": "project", "issue": "campo obrigatório"})
-    else:
-        if not project.get("name"):
-            errors.append({"field": "project.name", "issue": "nome do projeto obrigatório"})
-
-    # macros
-    macros = payload.get("macros")
-    if macros is None:
-        errors.append({"field": "macros", "issue": "campo obrigatório"})
-    elif not isinstance(macros, list) or len(macros) == 0:
-        errors.append({"field": "macros", "issue": "deve conter pelo menos 1 macro"})
-    else:
-        total_rows = 1  # linha do projeto
-
-        for idx, macro in enumerate(macros):
-            if not isinstance(macro, dict):
-                errors.append({"field": f"macros[{idx}]", "issue": "macro deve ser objeto"})
-                continue
-
-            if not macro.get("name"):
-                errors.append({"field": f"macros[{idx}].name", "issue": "nome da macro obrigatório"})
-
-            micros = macro.get("micros")
-            # REGRA CRÍTICA
-            if not isinstance(micros, list) or len(micros) == 0:
-                errors.append({
-                    "field": f"macros[{idx}].micros",
-                    "issue": "macro SEMPRE deve conter pelo menos 1 micro (regra obrigatória)",
-                })
-                continue
-
-            total_rows += 1  # macro
-            for midx, micro in enumerate(micros):
-                total_rows += 1
-                if not isinstance(micro, dict):
-                    errors.append({"field": f"macros[{idx}].micros[{midx}]", "issue": "micro deve ser objeto"})
-                    continue
-
-                if not micro.get("name"):
-                    errors.append({"field": f"macros[{idx}].micros[{midx}].name", "issue": "nome da micro obrigatório"})
-
-                if "hours" not in micro:
-                    errors.append({"field": f"macros[{idx}].micros[{midx}].hours", "issue": "hours obrigatório"})
-                else:
-                    try:
-                        h = float(micro["hours"])
-                        if h <= 0:
-                            errors.append({"field": f"macros[{idx}].micros[{midx}].hours", "issue": "hours deve ser maior que 0"})
-                    except (ValueError, TypeError):
-                        errors.append({"field": f"macros[{idx}].micros[{midx}].hours", "issue": "hours deve ser numérico"})
-
-        settings = payload.get("settings", {}) if isinstance(payload.get("settings", {}), dict) else {}
+    # MAX_ROWS
+    settings = payload.get("settings") if isinstance(payload.get("settings"), dict) else {}
+    try:
         max_rows_limit = int(settings.get("max_rows", MAX_ROWS))
+    except Exception:
+        max_rows_limit = MAX_ROWS
 
-        if total_rows > max_rows_limit:
-            errors.append({"field": "total_rows", "issue": f"total de linhas ({total_rows}) excede o limite ({max_rows_limit})"})
-            return False, {
-                "ok": False,
-                "error_code": "MAX_ROWS_EXCEEDED",
-                "message": f"O cronograma possui {total_rows} linhas, excedendo o limite de {max_rows_limit}",
-                "details": errors,
-            }
+    total_rows = 1  # projeto
+    macros = payload.get("macros", [])
+    for macro in macros:
+        total_rows += 1  # macro
+        micros = (macro or {}).get("micros", [])
+        total_rows += len(micros)
 
-    if errors:
+    if total_rows > max_rows_limit:
+        errors.append({
+            "field": "total_rows",
+            "issue": f"total de linhas ({total_rows}) excede o limite ({max_rows_limit})"
+        })
         return False, {
             "ok": False,
-            "error_code": "VALIDATION_ERROR",
-            "message": "Erro de validação no payload",
+            "error_code": "MAX_ROWS_EXCEEDED",
+            "message": f"O cronograma possui {total_rows} linhas, excedendo o limite de {max_rows_limit}",
             "details": errors,
         }
 
@@ -339,7 +324,7 @@ def generate_xlsx(payload: dict) -> Tuple[Path, dict, float]:
 
 
 # ========================================================
-# CORE SERVICE (compartilhado por MCP e HTTP)
+# CORE SERVICE (compartilhado)
 # ========================================================
 
 def build_generation_response(payload: dict) -> dict:
@@ -347,10 +332,11 @@ def build_generation_response(payload: dict) -> dict:
 
     cleanup_expired_files()
 
-    is_valid, error = validate_payload(payload)
-    if not is_valid:
-        logger.warning(f"Validação falhou: {error['error_code']}")
-        return error
+    # validação extra (MAX_ROWS, etc.)
+    ok, err = validate_payload_dict(payload)
+    if not ok:
+        logger.warning(f"Validação falhou: {err['error_code']}")
+        return err
 
     filepath, summary, project_total_hours = generate_xlsx(payload)
 
@@ -393,9 +379,10 @@ def build_generation_response(payload: dict) -> dict:
 
 def build_validate_response(payload: dict) -> dict:
     logger.info("Validando payload (sem gerar arquivo)")
-    is_valid, error = validate_payload(payload)
-    if not is_valid:
-        return error
+
+    ok, err = validate_payload_dict(payload)
+    if not ok:
+        return err
 
     project_total_hours = 0.0
     macro_count = len(payload["macros"])
@@ -465,14 +452,24 @@ async def http_health():
     }
 
 @app.post("/cronograma/generate")
-async def http_generate(payload: dict = Body(...)):
-    resp = build_generation_response(payload)
+async def http_generate(payload: PayloadModel):
+    """
+    PayloadModel deixa o OpenAPI rígido:
+    - requestBody REQUIRED
+    - project REQUIRED
+    - macros REQUIRED (>=1)
+    - micros REQUIRED (>=1)
+    - hours > 0
+    """
+    payload_dict = payload.model_dump(exclude_none=True)
+    resp = build_generation_response(payload_dict)
     status = 200 if resp.get("ok") else 400
     return JSONResponse(status_code=status, content=resp)
 
 @app.post("/cronograma/validate")
-async def http_validate(payload: dict = Body(...)):
-    resp = build_validate_response(payload)
+async def http_validate(payload: PayloadModel):
+    payload_dict = payload.model_dump(exclude_none=True)
+    resp = build_validate_response(payload_dict)
     status = 200 if resp.get("ok") else 400
     return JSONResponse(status_code=status, content=resp)
 
@@ -490,7 +487,7 @@ async def download_file(token: str):
     if not filepath.exists():
         with registry_lock:
             file_registry.pop(token, None)
-        raise HTTPException(status_code=404, detail="Arquivo não encontrado")
+        raise HTTP는Exception(status_code=404, detail="Arquivo não encontrado")
 
     logger.info(f"Download iniciado: {info['filename']}")
     return FileResponse(
@@ -512,7 +509,6 @@ async def on_startup():
                 logger.error(f"Erro no cleanup periódico: {e}")
             await asyncio.sleep(CLEANUP_INTERVAL_SECONDS)
 
-    # roda em background no mesmo loop do FastAPI
     asyncio.create_task(_periodic_cleanup())
 
 
@@ -523,14 +519,28 @@ async def on_startup():
 async def run_mcp_stdio():
     """
     Modo MCP stdio: SOMENTE quando um cliente MCP spawnar este processo.
-    Não use isso como daemon em Docker.
+    Observação: versões do fastmcp diferem. Vamos tentar o modo mais compatível.
     """
-    from mcp.server.stdio import stdio_server
-    async with stdio_server() as (read_stream, write_stream):
-        logger.info("MCP stdio iniciado")
-        # Observação: dependendo da versão do mcp/fastmcp, o transporte stdio pode variar.
-        # Se o cliente MCP for o responsável por spawn, isso funciona como esperado.
-        await mcp.run(read_stream, write_stream)
+    logger.info("MCP stdio iniciado")
+
+    # Caminho 1 (comum em FastMCP): mcp.run(transport="stdio")
+    try:
+        await mcp.run(transport="stdio")
+        return
+    except TypeError:
+        pass
+    except Exception as e:
+        logger.warning(f"Falha ao iniciar MCP com transport='stdio': {e}")
+
+    # Caminho 2: fallback se sua lib suportar stdio_server + run(streams)
+    try:
+        from mcp.server.stdio import stdio_server
+        async with stdio_server() as (read_stream, write_stream):
+            await mcp.run(read_stream, write_stream)  # algumas versões aceitam
+            return
+    except Exception as e:
+        logger.error(f"Erro fatal no MCP stdio: {e}", exc_info=True)
+        raise
 
 def run_http():
     logger.info(f"Iniciando HTTP na porta {HTTP_PORT}")
@@ -549,14 +559,11 @@ if __name__ == "__main__":
     logger.info("=" * 60)
 
     if RUN_MODE == "stdio":
-        # Atenção: use somente se um cliente MCP estiver conectando via stdio
         try:
             asyncio.run(run_mcp_stdio())
         except KeyboardInterrupt:
             logger.info("Encerrado pelo usuário")
-        except Exception as e:
-            logger.error(f"Erro fatal no MCP stdio: {e}", exc_info=True)
+        except Exception:
             sys.exit(1)
     else:
-        # Produção: HTTP-first
         run_http()
