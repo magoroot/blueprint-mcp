@@ -563,7 +563,7 @@ async def run_mcp_server():
     
     async with stdio_server() as (read_stream, write_stream):
         logger.info("Servidor MCP iniciado (stdio)")
-        await mcp.run(read_stream, write_stream, mcp.create_initialization_options())
+        await mcp.run(read_stream, write_stream)
 
 def run_http_server():
     """Executa o servidor HTTP"""
