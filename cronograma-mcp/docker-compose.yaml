@@ -1,0 +1,41 @@
+services:
+  cronograma-mcp:
+    container_name: cronograma-mcp
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: cronograma-mcp:latest
+
+    ports:
+      - "9290:8000"
+
+    environment:
+      # Diretório dentro do container (bate com o Dockerfile)
+      CRONOGRAMA_OUTPUT_DIR: /app/outputs
+
+      # Limites/TTL conforme README
+      CRONOGRAMA_MAX_ROWS: "500"
+      CRONOGRAMA_TTL_MINUTES: "30"
+
+      # IMPORTANTÍSSIMO: essa URL precisa ser acessível pelo navegador do usuário (OpenWebUI)
+      # Ajuste para o IP/DNS do seu servidor docker
+      CRONOGRAMA_BASE_URL: "http://SEU_IP_OU_DOMINIO:9290"
+
+      # Porta HTTP interna do app
+      CRONOGRAMA_HTTP_PORT: "8000"
+
+      # Logs
+      LOG_LEVEL: "INFO"
+
+    volumes:
+      # Persistência dos arquivos gerados enquanto o container existir
+      - ./outputs:/app/outputs
+
+    restart: unless-stopped
+
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c \"import requests; requests.get('http://localhost:8000/health')\" || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s
